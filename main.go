@@ -36,6 +36,15 @@ func main() {
 }
 
 func run() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("find user home dir: %w", err)
+	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("find hostname: %w", err)
+	}
+
 	var matchPrefixes []string
 
 	// add possible abs path prefixes
@@ -60,11 +69,6 @@ func run() error {
 		return fmt.Errorf("compile path regexp: %w", err)
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("find user home dir: %w", err)
-	}
-
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		replaced := expr.ReplaceAllStringFunc(scanner.Text(), func(match string) string {
@@ -75,6 +79,7 @@ func run() error {
 			if err != nil {
 				return match
 			}
+			abs = filepath.Join(hostname, abs)
 			return url(proto("file", abs), match)
 		})
 		os.Stdout.Write([]byte(replaced))
