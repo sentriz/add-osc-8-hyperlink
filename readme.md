@@ -8,9 +8,9 @@ _read from stdin, find relative or absolute paths, output osc-8 `file://` hyperl
 
 `go install go.senan.xyz/add-osc-8-hyperlink@latest`
 
-#### example integration with git and fish
+#### example integrations
 
-##### fish git wrapper
+##### fish and git diff, status, log
 
 ```fish
 function git
@@ -22,6 +22,18 @@ function git
 end
 ```
 
-##### video
+##### fish and ripgrep
+
+```fish
+function rg
+    if isatty stdout
+        command rg --color=always --line-number $argv | add-osc-8-hyperlink
+        return
+    end
+    command rg $argv
+end
+```
+
+##### fish and git video
 
 <https://user-images.githubusercontent.com/6832539/199340070-d34a6a38-8fce-49c3-a16a-32e88dad870e.mp4>
