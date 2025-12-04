@@ -64,7 +64,8 @@ func run() error {
 	// add ~/ home dir prefix
 	matchPrefixes = append(matchPrefixes, regexp.QuoteMeta("~"))
 
-	expr, err := regexp.Compile(fmt.Sprintf(`(?:%s)(?:/[^$\s\;~\:\"]+)?`, strings.Join(matchPrefixes, "|")))
+	// exclude \x1b (escape char) to preserve ANSI color codes in piped input
+	expr, err := regexp.Compile(fmt.Sprintf(`(?:%s)(?:/[^$\s\;~\:\"\x1b]+)?`, strings.Join(matchPrefixes, "|")))
 	if err != nil {
 		return fmt.Errorf("compile path regexp: %w", err)
 	}
