@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -14,13 +16,8 @@ const (
 	bel = "\u0007"
 )
 
-func url(url, text string) string {
-	return osc + "8;;" + url + bel + text + osc + "8;;" + bel
-}
-
-func proto(scheme, path string) string {
-	return scheme + "://" + path
-}
+// \x1b excluded to preserve ANSI colour codes in piped input
+const pathDelims = "$;~:\"'(){}[],\x1b"
 
 var commonPrefixes = []string{
 	"/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib64",
@@ -40,6 +37,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("find user home dir: %w", err)
 	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("find working dir: %w", err)
+	}
 	hostname, err := os.Hostname()
 	if err != nil {
 		return fmt.Errorf("find hostname: %w", err)
@@ -53,7 +54,7 @@ func run() error {
 	}
 
 	// add relative to current dir prefixes, fill be expanded to abs paths
-	relPaths, err := os.ReadDir(".")
+	relPaths, err := os.ReadDir(cwd)
 	if err != nil {
 		return fmt.Errorf("read local dir: %w", err)
 	}
@@ -64,28 +65,70 @@ func run() error {
 	// add ~/ home dir prefix
 	matchPrefixes = append(matchPrefixes, regexp.QuoteMeta("~"))
 
-	// exclude \x1b (escape char) to preserve ANSI color codes in piped input
-	expr, err := regexp.Compile(fmt.Sprintf(`(?:%s)(?:/[^$\s\;~\:\"\x1b]+)?`, strings.Join(matchPrefixes, "|")))
+	expr, err := regexp.Compile(fmt.Sprintf(`(?:%s)(?:/[^\s%s]*)?`, strings.Join(matchPrefixes, "|"), regexp.QuoteMeta(pathDelims)))
 	if err != nil {
 		return fmt.Errorf("compile path regexp: %w", err)
 	}
 
+	out := bufio.NewWriter(os.Stdout)
+	defer out.Flush()
+
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		replaced := expr.ReplaceAllStringFunc(scanner.Text(), func(match string) string {
-			if strings.HasPrefix(match, "~/") {
-				match = filepath.Join(home, match[2:])
-			}
-			abs, err := filepath.Abs(string(match))
-			if err != nil {
-				return match
-			}
-			abs = filepath.Join(hostname, abs)
-			return url(proto("file", abs), match)
-		})
-		os.Stdout.Write([]byte(replaced))
-		os.Stdout.Write([]byte{'\n'})
+		linkPaths(out, scanner.Text(), expr, home, cwd, hostname)
+		out.WriteByte('\n')
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scan stdin: %w", err)
 	}
 
 	return nil
+}
+
+func linkPaths(out *bufio.Writer, line string, expr *regexp.Regexp, home, cwd, hostname string) {
+	last := 0
+	for _, loc := range expr.FindAllStringIndex(line, -1) {
+		start, end := loc[0], loc[1]
+		if !standalone(line, start, end) {
+			continue
+		}
+
+		match := line[start:end]
+		abs := match
+		switch {
+		case strings.HasPrefix(abs, "~"):
+			abs = filepath.Join(home, abs[1:])
+		case !filepath.IsAbs(abs):
+			abs = filepath.Join(cwd, abs)
+		}
+
+		out.WriteString(line[last:start])
+		out.WriteString(hyperlink("file://"+filepath.Join(hostname, abs), match))
+		last = end
+	}
+	out.WriteString(line[last:])
+}
+
+func hyperlink(target, text string) string {
+	return osc + "8;;" + target + bel + text + osc + "8;;" + bel
+}
+
+func standalone(line string, start, end int) bool {
+	if start > 0 {
+		prev, _ := utf8.DecodeLastRuneInString(line[:start])
+		if pathChar(prev) {
+			return false
+		}
+	}
+	if end < len(line) {
+		next, _ := utf8.DecodeRuneInString(line[end:])
+		if pathChar(next) {
+			return false
+		}
+	}
+	return true
+}
+
+func pathChar(r rune) bool {
+	return !unicode.IsSpace(r) && !strings.ContainsRune(pathDelims, r)
 }
