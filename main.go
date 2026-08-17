@@ -115,14 +115,12 @@ func hyperlink(target, text string) string {
 
 func standalone(line string, start, end int) bool {
 	if start > 0 {
-		prev, _ := utf8.DecodeLastRuneInString(line[:start])
-		if pathChar(prev) {
+		if prev, _ := utf8.DecodeLastRuneInString(line[:start]); pathChar(prev) {
 			return false
 		}
 	}
 	if end < len(line) {
-		next, _ := utf8.DecodeRuneInString(line[end:])
-		if pathChar(next) {
+		if next, _ := utf8.DecodeRuneInString(line[end:]); pathChar(next) {
 			return false
 		}
 	}
