@@ -85,11 +85,16 @@ func run() error {
 	return nil
 }
 
+var csiStart = regexp.MustCompile(`\x1b\[[0-9;]*$`)
+
 func linkPaths(out *bufio.Writer, line string, expr *regexp.Regexp, home, cwd, hostname string) {
 	last := 0
 	for _, loc := range expr.FindAllStringIndex(line, -1) {
 		start, end := loc[0], loc[1]
 		if !standalone(line, start, end) {
+			continue
+		}
+		if csiStart.MatchString(line[:start]) {
 			continue
 		}
 
